@@ -111,11 +111,11 @@ html, body {
 }
 
 .running-project {
-  font-size: 15px;
-  color: var(--text-dim);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+  word-break: break-word;
 }
 
 .running-time {
@@ -148,6 +148,10 @@ html, body {
 .running-actions .btn {
   flex: 1;
   margin-top: 0;
+}
+
+.running-actions-secondary {
+  margin-top: 8px;
 }
 
 .note-input {

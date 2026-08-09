@@ -105,7 +105,9 @@ function renderTimer() {
     runningCard.classList.remove('hidden');
     idleHint.classList.add('hidden');
     const p = projectById(state.running.projectId);
-    el('#running-project-name').textContent = p ? p.name : 'Unknown project';
+    const nameEl = el('#running-project-name');
+    nameEl.textContent = p ? p.name : 'Unknown project';
+    nameEl.style.color = p ? p.color : 'var(--text-dim)';
     el('#running-note').value = state.running.note || '';
     el('#running-time').textContent = fmtHMS(entryDuration(state.running));
     el('#running-badge').classList.toggle('hidden', !state.running.paused);
@@ -374,19 +376,28 @@ async function togglePause() {
   await reload();
 }
 
-async function stopTimer() {
+async function stopTimer(endDate) {
   if (!state.running) return;
   const entry = { ...state.running };
-  const now = Date.now();
+  const end = endDate instanceof Date ? endDate : new Date();
+  const endMs = end.getTime();
   if (entry.paused && entry.pausedAt) {
     const pausedAtMs = new Date(entry.pausedAt).getTime();
-    entry.pauseMs = (entry.pauseMs || 0) + (now - pausedAtMs);
+    entry.pauseMs = (entry.pauseMs || 0) + Math.max(0, endMs - pausedAtMs);
   }
   entry.paused = false;
   entry.pausedAt = null;
   entry.note = el('#running-note').value.trim();
-  entry.end = new Date(now).toISOString();
-  entry.updatedAt = now;
+  entry.end = end.toISOString();
+  entry.updatedAt = Date.now();
+  await store.putEntry(entry);
+  pushEntry(entry);
+  await reload();
+}
+
+async function setRunningStart(newStart) {
+  if (!state.running) return;
+  const entry = { ...state.running, start: newStart.toISOString(), updatedAt: Date.now() };
   await store.putEntry(entry);
   pushEntry(entry);
   await reload();
@@ -473,6 +484,81 @@ function openSyncModal() {
       btn.textContent = 'Connect';
       btn.disabled = false;
     }
+  });
+}
+
+function openStartAtModal() {
+  if (!state.running) return;
+  const startDate = new Date(state.running.start);
+  openModal(`
+    <h2>Start at</h2>
+    <div class="field">
+      <label>Time</label>
+      <input type="time" id="sa-time" value="${toTimeInputValue(state.running.start)}" />
+    </div>
+    <p class="hint-text" id="sa-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="sa-cancel">Cancel</button>
+      <button class="btn" id="sa-save">Save</button>
+    </div>
+  `);
+  el('#sa-cancel').addEventListener('click', closeModal);
+  el('#sa-save').addEventListener('click', async () => {
+    const timeVal = el('#sa-time').value;
+    if (!timeVal) {
+      el('#sa-error').textContent = 'Please choose a time.';
+      return;
+    }
+    const [h, m] = timeVal.split(':').map(Number);
+    const newStart = new Date(startDate);
+    newStart.setHours(h, m, 0, 0);
+    if (newStart.getTime() > Date.now()) {
+      el('#sa-error').textContent = 'Start time cannot be in the future.';
+      return;
+    }
+    closeModal();
+    await setRunningStart(newStart);
+  });
+}
+
+function openEndAtModal() {
+  if (!state.running) return;
+  const startDate = new Date(state.running.start);
+  openModal(`
+    <h2>End at</h2>
+    <div class="field">
+      <label>Time</label>
+      <input type="time" id="ea-time" value="${toTimeInputValue(new Date().toISOString())}" />
+    </div>
+    <p class="hint-text" id="ea-error"></p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="ea-cancel">Cancel</button>
+      <button class="btn" id="ea-save">Stop</button>
+    </div>
+  `);
+  el('#ea-cancel').addEventListener('click', closeModal);
+  el('#ea-save').addEventListener('click', async () => {
+    const timeVal = el('#ea-time').value;
+    if (!timeVal) {
+      el('#ea-error').textContent = 'Please choose a time.';
+      return;
+    }
+    const [h, m] = timeVal.split(':').map(Number);
+    const newEnd = new Date(startDate);
+    newEnd.setHours(h, m, 0, 0);
+    if (newEnd.getTime() < startDate.getTime()) {
+      newEnd.setDate(newEnd.getDate() + 1);
+    }
+    if (newEnd.getTime() < startDate.getTime()) {
+      el('#ea-error').textContent = 'End time must be after the start time.';
+      return;
+    }
+    if (newEnd.getTime() > Date.now()) {
+      el('#ea-error').textContent = 'End time cannot be in the future.';
+      return;
+    }
+    closeModal();
+    await stopTimer(newEnd);
   });
 }
 
@@ -646,8 +732,10 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
   btn.addEventListener('click', () => switchView(btn.dataset.view));
 });
 
-el('#stop-btn').addEventListener('click', stopTimer);
+el('#stop-btn').addEventListener('click', () => stopTimer());
 el('#pause-btn').addEventListener('click', togglePause);
+el('#start-at-btn').addEventListener('click', openStartAtModal);
+el('#end-at-btn').addEventListener('click', openEndAtModal);
 el('#add-project-btn').addEventListener('click', () => openProjectModal(null));
 el('#add-entry-btn').addEventListener('click', () => openEntryModal(null));
 
