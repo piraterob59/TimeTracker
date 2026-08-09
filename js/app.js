@@ -56,8 +56,14 @@ function fmtDateHeading(dateKey) {
 
 function entryDuration(entry) {
   const start = new Date(entry.start).getTime();
-  const end = entry.end ? new Date(entry.end).getTime() : Date.now();
-  return (end - start) / 1000;
+  const pauseMs = entry.pauseMs || 0;
+  if (entry.end) {
+    return (new Date(entry.end).getTime() - start - pauseMs) / 1000;
+  }
+  if (entry.paused && entry.pausedAt) {
+    return (new Date(entry.pausedAt).getTime() - start - pauseMs) / 1000;
+  }
+  return (Date.now() - start - pauseMs) / 1000;
 }
 
 function projectById(id) {
@@ -102,6 +108,8 @@ function renderTimer() {
     el('#running-project-name').textContent = p ? p.name : 'Unknown project';
     el('#running-note').value = state.running.note || '';
     el('#running-time').textContent = fmtHMS(entryDuration(state.running));
+    el('#running-badge').classList.toggle('hidden', !state.running.paused);
+    el('#pause-btn').textContent = state.running.paused ? 'Resume' : 'Pause';
   } else {
     runningCard.classList.add('hidden');
     idleHint.classList.remove('hidden');
@@ -247,6 +255,9 @@ async function startTimer(projectId) {
     start: new Date().toISOString(),
     end: null,
     note: '',
+    paused: false,
+    pausedAt: null,
+    pauseMs: 0,
     updatedAt: Date.now(),
   };
   await store.putEntry(entry);
@@ -255,12 +266,39 @@ async function startTimer(projectId) {
   await reload();
 }
 
+async function togglePause() {
+  if (!state.running) return;
+  const entry = { ...state.running };
+  const now = Date.now();
+  if (entry.paused) {
+    const pausedAtMs = new Date(entry.pausedAt).getTime();
+    entry.pauseMs = (entry.pauseMs || 0) + (now - pausedAtMs);
+    entry.paused = false;
+    entry.pausedAt = null;
+  } else {
+    entry.paused = true;
+    entry.pausedAt = new Date(now).toISOString();
+  }
+  entry.note = el('#running-note').value.trim();
+  entry.updatedAt = now;
+  await store.putEntry(entry);
+  pushEntry(entry);
+  await reload();
+}
+
 async function stopTimer() {
   if (!state.running) return;
   const entry = { ...state.running };
+  const now = Date.now();
+  if (entry.paused && entry.pausedAt) {
+    const pausedAtMs = new Date(entry.pausedAt).getTime();
+    entry.pauseMs = (entry.pauseMs || 0) + (now - pausedAtMs);
+  }
+  entry.paused = false;
+  entry.pausedAt = null;
   entry.note = el('#running-note').value.trim();
-  entry.end = new Date().toISOString();
-  entry.updatedAt = Date.now();
+  entry.end = new Date(now).toISOString();
+  entry.updatedAt = now;
   await store.putEntry(entry);
   pushEntry(entry);
   await reload();
@@ -493,6 +531,9 @@ function openEntryModal(entry) {
       start: start.toISOString(),
       end: end.toISOString(),
       note: el('#ef-note').value.trim(),
+      paused: false,
+      pausedAt: null,
+      pauseMs: e.pauseMs || 0,
       updatedAt: Date.now(),
     };
     await store.putEntry(updated);
@@ -518,6 +559,7 @@ document.querySelectorAll('.tab-btn').forEach((btn) => {
 });
 
 el('#stop-btn').addEventListener('click', stopTimer);
+el('#pause-btn').addEventListener('click', togglePause);
 el('#add-project-btn').addEventListener('click', () => openProjectModal(null));
 el('#add-entry-btn').addEventListener('click', () => openEntryModal(null));
 
