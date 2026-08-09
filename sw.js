@@ -1,4 +1,4 @@
-const CACHE_NAME = 'timetracker-v4';
+const CACHE_NAME = 'timetracker-v5';
 const APP_SHELL = [
   './',
   './index.html',
@@ -32,18 +32,18 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // let CDN/Firebase requests pass through untouched
 
+  // Network-first: always prefer the freshest deployed files when online.
+  // Cache is only a fallback for offline use, so updates show up immediately
+  // instead of waiting on the browser's service-worker update cycle.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.status === 200) {
-            const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
-          }
-          return res;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(req)
+      .then((res) => {
+        if (res && res.status === 200) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });
