@@ -210,6 +210,46 @@ html, body {
   margin-top: 4px;
 }
 
+.week-chart-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 14px 6px;
+  margin-bottom: 16px;
+}
+
+.week-chart-card .section-title {
+  margin-bottom: 10px;
+}
+
+#week-chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 2px 12px;
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.chart-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
 .history-group {
   margin-bottom: 18px;
 }

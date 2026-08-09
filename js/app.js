@@ -158,6 +158,8 @@ function renderHistory() {
   el('#total-today').textContent = fmtHM(todaySec);
   el('#total-week').textContent = fmtHM(weekSec);
 
+  renderWeekChart(completed, ws);
+
   const groups = new Map();
   for (const e of completed) {
     const key = fmtDateKey(e.start);
@@ -197,6 +199,92 @@ function renderHistory() {
     }
     listEl.appendChild(groupEl);
   }
+}
+
+function renderWeekChart(completed, ws) {
+  const wsDate = new Date(ws);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(wsDate);
+    d.setDate(d.getDate() + i);
+    days.push(d);
+  }
+  const dayKeys = days.map((d) => fmtDateKey(d.toISOString()));
+  const dayLabels = days.map((d) => d.toLocaleDateString([], { weekday: 'short' }));
+  const todayKey = fmtDateKey(new Date().toISOString());
+
+  const perDay = dayKeys.map(() => new Map());
+  const projectIdsInWeek = new Set();
+  for (const e of completed) {
+    const idx = dayKeys.indexOf(fmtDateKey(e.start));
+    if (idx === -1) continue;
+    const minutes = entryDuration(e) / 60;
+    const map = perDay[idx];
+    map.set(e.projectId, (map.get(e.projectId) || 0) + minutes);
+    projectIdsInWeek.add(e.projectId);
+  }
+
+  const card = el('#week-chart-card');
+  const chartEl = el('#week-chart');
+  const legendEl = el('#week-chart-legend');
+
+  if (projectIdsInWeek.size === 0) {
+    card.classList.add('hidden');
+    chartEl.innerHTML = '';
+    legendEl.innerHTML = '';
+    return;
+  }
+  card.classList.remove('hidden');
+
+  const projectsInWeek = [...projectIdsInWeek]
+    .map((id) => projectById(id))
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const dayTotals = perDay.map((map) => [...map.values()].reduce((a, b) => a + b, 0));
+  const maxTotal = Math.max(1, ...dayTotals);
+
+  const width = 700;
+  const height = 220;
+  const padTop = 16;
+  const padBottom = 28;
+  const padSide = 12;
+  const plotHeight = height - padTop - padBottom;
+  const colWidth = (width - padSide * 2) / 7;
+  const barWidth = colWidth * 0.56;
+
+  let bars = '';
+  for (let i = 0; i < 7; i++) {
+    const colX = padSide + i * colWidth + (colWidth - barWidth) / 2;
+    let y = height - padBottom;
+    const map = perDay[i];
+    for (const p of projectsInWeek) {
+      const minutes = map.get(p.id) || 0;
+      if (minutes <= 0) continue;
+      const segHeight = (minutes / maxTotal) * plotHeight;
+      const segY = y - segHeight;
+      bars += `<rect x="${colX.toFixed(1)}" y="${segY.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(segHeight, 0).toFixed(1)}" fill="${p.color}" rx="2"></rect>`;
+      y = segY;
+    }
+    const labelX = colX + barWidth / 2;
+    const isToday = dayKeys[i] === todayKey;
+    bars += `<text x="${labelX.toFixed(1)}" y="${height - 8}" text-anchor="middle" font-size="13" font-weight="${isToday ? '700' : '400'}" style="fill:var(--text-dim)">${dayLabels[i]}</text>`;
+    if (dayTotals[i] > 0) {
+      const totalLabelY = Math.max(height - padBottom - (dayTotals[i] / maxTotal) * plotHeight - 6, padTop + 10);
+      bars += `<text x="${labelX.toFixed(1)}" y="${totalLabelY.toFixed(1)}" text-anchor="middle" font-size="11" style="fill:var(--text-dim)">${Math.round(dayTotals[i])}m</text>`;
+    }
+  }
+
+  const baseline = `<line x1="${padSide}" y1="${height - padBottom}" x2="${width - padSide}" y2="${height - padBottom}" style="stroke:var(--border)" stroke-width="1"></line>`;
+
+  chartEl.innerHTML = `<svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">${baseline}${bars}</svg>`;
+
+  legendEl.innerHTML = projectsInWeek.map((p) => `
+    <div class="chart-legend-item">
+      <span class="chart-legend-dot" style="background:${p.color}"></span>
+      <span>${escapeHtml(p.name)}</span>
+    </div>
+  `).join('');
 }
 
 function renderProjects() {
