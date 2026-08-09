@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TimeTracker Icon Designer</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --text: #14161a;
+    --text-dim: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0d10;
+      --surface: #17191d;
+      --text: #f2f3f5;
+      --text-dim: #9aa0a8;
+      --border: #2a2d33;
+      --accent: #4f8cff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--text-dim); font-size: 14px; margin: 0 0 24px; }
+  .layout {
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .preview-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    flex: 0 0 auto;
+  }
+  .preview-frame {
+    width: 220px;
+    height: 220px;
+    border-radius: 22%;
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+  }
+  .preview-frame canvas { width: 100%; height: 100%; display: block; }
+  .preview-note {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    max-width: 220px;
+  }
+  .controls {
+    flex: 1 1 320px;
+    min-width: 280px;
+    max-width: 420px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .field { margin-bottom: 16px; }
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .field input[type="text"],
+  .field select {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+  }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  input[type="color"] {
+    width: 100%;
+    height: 38px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: none;
+    padding: 2px;
+    cursor: pointer;
+  }
+  input[type="range"] { width: 100%; }
+  .toggle-group {
+    display: flex;
+    gap: 8px;
+  }
+  .toggle-btn {
+    flex: 1;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .toggle-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .presets {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .preset-swatch {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+  .btn {
+    width: 100%;
+    padding: 13px;
+    border-radius: 10px;
+    border: none;
+    background: var(--accent);
+    color: white;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+  }
+  .btn:active { opacity: 0.85; }
+  .status {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-top: 10px;
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Design your TimeTracker icon</h1>
+<p class="sub">Edit-to-edge — iOS applies its own rounded-corner mask when you add it to your Home Screen, so the exported file is a full square. The rounded preview on the left shows roughly how it'll actually look.</p>
+
+<div class="layout">
+  <div class="preview-col">
+    <div class="preview-frame">
+      <canvas id="canvas" width="512" height="512"></canvas>
+    </div>
+    <div class="preview-note">Simulated iPhone Home Screen shape</div>
+  </div>
+
+  <div class="controls">
+    <div class="field">
+      <label>Quick presets</label>
+      <div class="presets" id="presets"></div>
+    </div>
+
+    <div class="field">
+      <label>Background</label>
+      <div class="toggle-group" id="bg-mode">
+        <button class="toggle-btn active" data-mode="solid">Solid</button>
+        <button class="toggle-btn" data-mode="gradient">Gradient</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="row">
+        <div>
+          <label id="bg1-label">Color</label>
+          <input type="color" id="bg1" value="#2563eb" />
+        </div>
+        <div id="bg2-wrap" style="display:none">
+          <label>Color 2</label>
+          <input type="color" id="bg2" value="#7c3aed" />
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Foreground</label>
+      <div class="toggle-group" id="fg-mode">
+        <button class="toggle-btn active" data-mode="emoji">Emoji / symbol</button>
+        <button class="toggle-btn" data-mode="text">Text</button>
+        <button class="toggle-btn" data-mode="none">None</button>
+      </div>
+    </div>
+
+    <div class="field" id="fg-content-field">
+      <label id="fg-content-label">Emoji or symbol</label>
+      <input type="text" id="fg-content" value="⏱" maxlength="4" />
+    </div>
+
+    <div class="field" id="fg-color-field" style="display:none">
+      <label>Text color</label>
+      <input type="color" id="fg-color" value="#ffffff" />
+    </div>
+
+    <div class="field">
+      <label>Foreground size</label>
+      <input type="range" id="fg-size" min="20" max="80" value="52" />
+    </div>
+
+    <button class="btn" id="download-btn">Download icon files</button>
+    <div class="status" id="status"></div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+const state = {
+  bgMode: 'solid',
+  bg1: '#2563eb',
+  bg2: '#7c3aed',
+  fgMode: 'emoji',
+  fgContent: '⏱',
+  fgColor: '#ffffff',
+  fgSize: 52,
+};
+
+const PRESETS = [
+  { swatch: '⏱', bgMode: 'solid', bg1: '#2563eb', bg2: '#7c3aed', fgMode: 'emoji', fgContent: '⏱', fgColor: '#ffffff', fgSize: 52 },
+  { swatch: '📊', bgMode: 'gradient', bg1: '#0891b2', bg2: '#0f172a', fgMode: 'emoji', fgContent: '📊', fgColor: '#ffffff', fgSize: 50 },
+  { swatch: '⚡', bgMode: 'gradient', bg1: '#f59e0b', bg2: '#dc2626', fgMode: 'emoji', fgContent: '⚡', fgColor: '#ffffff', fgSize: 54 },
+  { swatch: '🕐', bgMode: 'solid', bg1: '#16a34a', bg2: '#16a34a', fgMode: 'emoji', fgContent: '🕐', fgColor: '#ffffff', fgSize: 52 },
+  { swatch: 'T', bgMode: 'gradient', bg1: '#4b5563', bg2: '#111827', fgMode: 'text', fgContent: 'T', fgColor: '#ffffff', fgSize: 56 },
+];
+
+function drawIcon() {
+  const size = canvas.width;
+  ctx.clearRect(0, 0, size, size);
+
+  if (state.bgMode === 'gradient') {
+    const g = ctx.createLinearGradient(0, 0, size, size);
+    g.addColorStop(0, state.bg1);
+    g.addColorStop(1, state.bg2);
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = state.bg1;
+  }
+  ctx.fillRect(0, 0, size, size);
+
+  if (state.fgMode !== 'none' && state.fgContent) {
+    const fontSize = size * (state.fgSize / 100);
+    ctx.font = `${state.fgMode === 'text' ? '700 ' : ''}${fontSize}px -apple-system, "Segoe UI Emoji", "Segoe UI", sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if (state.fgMode === 'text') {
+      ctx.fillStyle = state.fgColor;
+    }
+    ctx.fillText(state.fgContent, size / 2, size / 2 + fontSize * 0.04);
+  }
+}
+
+function syncUI() {
+  document.querySelectorAll('#bg-mode .toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.bgMode));
+  document.querySelectorAll('#fg-mode .toggle-btn').forEach((b) => b.classList.toggle('active', b.dataset.mode === state.fgMode));
+  document.getElementById('bg2-wrap').style.display = state.bgMode === 'gradient' ? '' : 'none';
+  document.getElementById('bg1-label').textContent = state.bgMode === 'gradient' ? 'Color 1' : 'Color';
+  document.getElementById('fg-color-field').style.display = state.fgMode === 'text' ? '' : 'none';
+  document.getElementById('fg-content-label').textContent = state.fgMode === 'text' ? 'Text (1-2 letters works best)' : 'Emoji or symbol';
+  document.getElementById('fg-content-field').style.display = state.fgMode === 'none' ? 'none' : '';
+  document.getElementById('bg1').value = state.bg1;
+  document.getElementById('bg2').value = state.bg2;
+  document.getElementById('fg-content').value = state.fgContent;
+  document.getElementById('fg-color').value = state.fgColor;
+  document.getElementById('fg-size').value = state.fgSize;
+  drawIcon();
+}
+
+document.querySelectorAll('#bg-mode .toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => { state.bgMode = btn.dataset.mode; syncUI(); });
+});
+document.querySelectorAll('#fg-mode .toggle-btn').forEach((btn) => {
+  btn.addEventListener('click', () => { state.fgMode = btn.dataset.mode; syncUI(); });
+});
+document.getElementById('bg1').addEventListener('input', (e) => { state.bg1 = e.target.value; drawIcon(); });
+document.getElementById('bg2').addEventListener('input', (e) => { state.bg2 = e.target.value; drawIcon(); });
+document.getElementById('fg-content').addEventListener('input', (e) => { state.fgContent = e.target.value; drawIcon(); });
+document.getElementById('fg-color').addEventListener('input', (e) => { state.fgColor = e.target.value; drawIcon(); });
+document.getElementById('fg-size').addEventListener('input', (e) => { state.fgSize = Number(e.target.value); drawIcon(); });
+
+const presetsEl = document.getElementById('presets');
+PRESETS.forEach((p) => {
+  const el = document.createElement('div');
+  el.className = 'preset-swatch';
+  el.textContent = p.swatch;
+  el.style.background = p.bgMode === 'gradient' ? `linear-gradient(135deg, ${p.bg1}, ${p.bg2})` : p.bg1;
+  el.addEventListener('click', () => {
+    Object.assign(state, p);
+    syncUI();
+  });
+  presetsEl.appendChild(el);
+});
+
+function downloadCanvas(sourceCanvas, size, filename) {
+  const tmp = document.createElement('canvas');
+  tmp.width = size;
+  tmp.height = size;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(sourceCanvas, 0, 0, size, size);
+  return new Promise((resolve) => {
+    tmp.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      resolve();
+    }, 'image/png');
+  });
+}
+
+document.getElementById('download-btn').addEventListener('click', async () => {
+  const status = document.getElementById('status');
+  status.textContent = 'Downloading icon-512.png…';
+  await downloadCanvas(canvas, 512, 'icon-512.png');
+  await new Promise((r) => setTimeout(r, 400));
+  status.textContent = 'Downloading icon-192.png…';
+  await downloadCanvas(canvas, 192, 'icon-192.png');
+  await new Promise((r) => setTimeout(r, 400));
+  status.textContent = 'Downloading apple-touch-icon.png…';
+  await downloadCanvas(canvas, 180, 'apple-touch-icon.png');
+  status.textContent = 'Done! All 3 files saved to your Downloads folder.';
+});
+
+syncUI();
+</script>
+</body>
+</html>
