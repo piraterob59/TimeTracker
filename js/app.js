@@ -271,7 +271,10 @@ function renderHistory() {
   el('#total-today').textContent = fmtHM(todaySec);
   el('#total-week').textContent = fmtHM(weekSec);
 
-  renderWeekChart(completed, ws);
+  const chartStart = new Date(now);
+  chartStart.setHours(0, 0, 0, 0);
+  chartStart.setDate(chartStart.getDate() - 6);
+  renderWeekChart(completed, chartStart.getTime());
 
   const groups = new Map();
   for (const e of completed) {
@@ -318,8 +321,8 @@ function renderHistory() {
   }
 }
 
-function renderWeekChart(completed, ws) {
-  const wsDate = new Date(ws);
+function renderWeekChart(completed, chartStart) {
+  const wsDate = new Date(chartStart);
   const days = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(wsDate);
