@@ -266,7 +266,30 @@ html, body {
   margin: 0 0 8px 4px;
 }
 
+.entry-swipe {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.entry-delete-action {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 22px;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
 .entry-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -274,7 +297,14 @@ html, body {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px;
-  margin-bottom: 8px;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform 0.2s ease;
+}
+
+.entry-row.swiping {
+  transition: none;
 }
 
 .entry-color {

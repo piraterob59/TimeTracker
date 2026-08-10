@@ -134,6 +134,117 @@ function renderTimer() {
   }
 }
 
+let openSwipeRow = null;
+const SWIPE_OPEN_X = -88;
+const SWIPE_THRESHOLD = -40;
+
+function closeSwipe(wrapEl) {
+  const row = wrapEl.querySelector('.entry-row');
+  if (row) row.style.transform = '';
+  wrapEl.classList.remove('swipe-open');
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (openSwipeRow && !openSwipeRow.contains(e.target)) {
+    closeSwipe(openSwipeRow);
+    openSwipeRow = null;
+  }
+});
+
+function attachSwipeToDelete(wrap, row, entry) {
+  const deleteBtn = wrap.querySelector('.entry-delete-action');
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let dragging = false;
+  let moved = false;
+  let axis = null;
+
+  function setTransform(x) {
+    currentX = x;
+    row.style.transform = `translateX(${x}px)`;
+  }
+
+  row.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (openSwipeRow && openSwipeRow !== wrap) {
+      closeSwipe(openSwipeRow);
+      openSwipeRow = null;
+    }
+    startX = e.clientX;
+    startY = e.clientY;
+    dragging = true;
+    moved = false;
+    axis = null;
+    row.classList.add('swiping');
+    row.setPointerCapture(e.pointerId);
+  });
+
+  row.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    if (axis === null) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (axis !== 'x') return;
+    moved = true;
+    const base = wrap.classList.contains('swipe-open') ? SWIPE_OPEN_X : 0;
+    const x = Math.min(0, Math.max(SWIPE_OPEN_X * 1.15, base + dx));
+    setTransform(x);
+  });
+
+  function endDrag() {
+    if (!dragging) return;
+    dragging = false;
+    row.classList.remove('swiping');
+    if (axis === 'x') {
+      if (currentX <= SWIPE_THRESHOLD) {
+        setTransform(SWIPE_OPEN_X);
+        wrap.classList.add('swipe-open');
+        openSwipeRow = wrap;
+      } else {
+        setTransform(0);
+        wrap.classList.remove('swipe-open');
+        if (openSwipeRow === wrap) openSwipeRow = null;
+      }
+    }
+  }
+
+  row.addEventListener('pointerup', endDrag);
+  row.addEventListener('pointercancel', endDrag);
+
+  row.addEventListener('click', () => {
+    if (moved) {
+      moved = false;
+      return;
+    }
+    if (wrap.classList.contains('swipe-open')) {
+      setTransform(0);
+      wrap.classList.remove('swipe-open');
+      if (openSwipeRow === wrap) openSwipeRow = null;
+      return;
+    }
+    openEntryModal(entry);
+  });
+
+  deleteBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const ok = await openConfirm('Delete this entry?');
+    if (!ok) {
+      setTransform(0);
+      wrap.classList.remove('swipe-open');
+      if (openSwipeRow === wrap) openSwipeRow = null;
+      return;
+    }
+    if (openSwipeRow === wrap) openSwipeRow = null;
+    await store.deleteEntry(entry.id);
+    pushDeleteEntry(entry.id);
+    await reload();
+  });
+}
+
 let tickHandle = null;
 function ensureTicking() {
   if (tickHandle) return;
@@ -186,6 +297,9 @@ function renderHistory() {
     groupEl.appendChild(heading);
     for (const entry of group) {
       const p = projectById(entry.projectId);
+      const wrap = document.createElement('div');
+      wrap.className = 'entry-swipe';
+      wrap.innerHTML = `<button type="button" class="entry-delete-action">Delete</button>`;
       const row = document.createElement('div');
       row.className = 'entry-row';
       row.innerHTML = `
@@ -196,8 +310,9 @@ function renderHistory() {
         </div>
         <div class="entry-duration">${fmtHM(entryDuration(entry))}</div>
       `;
-      row.addEventListener('click', () => openEntryModal(entry));
-      groupEl.appendChild(row);
+      wrap.appendChild(row);
+      attachSwipeToDelete(wrap, row, entry);
+      groupEl.appendChild(wrap);
     }
     listEl.appendChild(groupEl);
   }
