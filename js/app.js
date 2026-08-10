@@ -717,63 +717,6 @@ function openEntryModal(entry) {
   });
 }
 
-// ---------- voice input ----------
-
-function initVoiceInput() {
-  const btn = el('#voice-btn');
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    btn.classList.add('hidden');
-    return;
-  }
-  btn.classList.remove('hidden');
-
-  const recognizer = new SR();
-  recognizer.continuous = false;
-  recognizer.interimResults = true;
-  recognizer.lang = navigator.language || 'en-US';
-
-  let listening = false;
-  let baseValue = '';
-
-  recognizer.addEventListener('start', () => {
-    listening = true;
-    btn.classList.add('listening');
-    baseValue = el('#running-note').value.trim();
-    if (baseValue) baseValue += ' ';
-  });
-
-  recognizer.addEventListener('result', (e) => {
-    let transcript = '';
-    for (let i = 0; i < e.results.length; i++) {
-      transcript += e.results[i][0].transcript;
-    }
-    el('#running-note').value = (baseValue + transcript).trim();
-  });
-
-  recognizer.addEventListener('end', () => {
-    listening = false;
-    btn.classList.remove('listening');
-  });
-
-  recognizer.addEventListener('error', () => {
-    listening = false;
-    btn.classList.remove('listening');
-  });
-
-  btn.addEventListener('click', () => {
-    if (listening) {
-      recognizer.stop();
-      return;
-    }
-    try {
-      recognizer.start();
-    } catch {
-      // recognition already starting/running; ignore
-    }
-  });
-}
-
 // ---------- navigation ----------
 
 function switchView(view) {
@@ -808,7 +751,6 @@ async function init() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(() => {});
   }
-  initVoiceInput();
   await initSync(store, async () => { await reload(); });
   await reload();
   ensureTicking();

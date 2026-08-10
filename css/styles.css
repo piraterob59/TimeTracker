@@ -154,15 +154,7 @@ html, body {
   margin-top: 8px;
 }
 
-.note-row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
 .note-input {
-  flex: 1;
-  min-width: 0;
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
@@ -170,29 +162,6 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
-}
-
-.mic-btn {
-  flex: 0 0 auto;
-  width: 42px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--text);
-}
-
-.mic-btn.listening {
-  background: var(--danger);
-  border-color: var(--danger);
-  animation: mic-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes mic-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
 }
 
 .project-grid {
