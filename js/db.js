@@ -51,6 +51,17 @@ function reqToPromise(req) {
   });
 }
 
+// Wraps a whole transaction in a Promise, resolving with `result` once the
+// transaction durably commits (see the note on putProject below for why
+// that's different from — and safer than — waiting on the individual
+// request). Used by every write method to avoid repeating this plumbing.
+function txDone(t, result) {
+  return new Promise((resolve, reject) => {
+    t.oncomplete = () => resolve(result);
+    t.onerror = () => reject(t.error);
+  });
+}
+
 // Generates a random unique id for new projects/entries (e.g.
 // "3fa85f64-5717-4562-b3fc-2c963f66afa6").
 export function uuid() {
@@ -79,18 +90,15 @@ class Store {
   }
 
   // put() both inserts new rows and overwrites existing ones with the same
-  // key — there's no separate insert/update method in IndexedDB.
+  // key — there's no separate insert/update method in IndexedDB. Note the
+  // individual put() request resolves before the data is durably
+  // committed — waiting on the transaction (via txDone) instead is the
+  // safe way to know the write has actually landed.
   async putProject(project) {
     const db = await this.db();
     const t = tx(db, 'projects', 'readwrite');
     t.objectStore('projects').put(project);
-    // The individual put() request resolves before the data is durably
-    // committed — waiting on the transaction's oncomplete instead is the
-    // safe way to know the write has actually landed.
-    return new Promise((res, rej) => {
-      t.oncomplete = () => res(project);
-      t.onerror = () => rej(t.error);
-    });
+    return txDone(t, project);
   }
 
   // Deletes a project and cascades the delete to every entry that
@@ -111,10 +119,7 @@ class Store {
         cursor.continue();
       }
     };
-    return new Promise((res, rej) => {
-      t.oncomplete = () => res();
-      t.onerror = () => rej(t.error);
-    });
+    return txDone(t);
   }
 
   async getAllEntries() {
@@ -123,53 +128,18 @@ class Store {
     return reqToPromise(t.objectStore('entries').getAll());
   }
 
-  // Looks up entries via the 'projectId' index instead of scanning every
-  // entry and filtering in JS.
-  async getEntriesForProject(projectId) {
-    const db = await this.db();
-    const t = tx(db, 'entries', 'readonly');
-    const idx = t.objectStore('entries').index('projectId');
-    return reqToPromise(idx.getAll(IDBKeyRange.only(projectId)));
-  }
-
   async putEntry(entry) {
     const db = await this.db();
     const t = tx(db, 'entries', 'readwrite');
     t.objectStore('entries').put(entry);
-    return new Promise((res, rej) => {
-      t.oncomplete = () => res(entry);
-      t.onerror = () => rej(t.error);
-    });
+    return txDone(t, entry);
   }
 
   async deleteEntry(id) {
     const db = await this.db();
     const t = tx(db, 'entries', 'readwrite');
     t.objectStore('entries').delete(id);
-    return new Promise((res, rej) => {
-      t.oncomplete = () => res();
-      t.onerror = () => rej(t.error);
-    });
-  }
-
-  // Simple key/value row, used for small bits of app state that don't fit
-  // the projects/entries shape (not currently used elsewhere, but kept as
-  // a general-purpose escape hatch).
-  async getMeta(key) {
-    const db = await this.db();
-    const t = tx(db, 'meta', 'readonly');
-    const row = await reqToPromise(t.objectStore('meta').get(key));
-    return row ? row.value : undefined;
-  }
-
-  async setMeta(key, value) {
-    const db = await this.db();
-    const t = tx(db, 'meta', 'readwrite');
-    t.objectStore('meta').put({ key, value });
-    return new Promise((res, rej) => {
-      t.oncomplete = () => res();
-      t.onerror = () => rej(t.error);
-    });
+    return txDone(t);
   }
 }
 

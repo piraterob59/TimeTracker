@@ -54,31 +54,33 @@ function stopListening() {
   unsubEntries = null;
 }
 
-function startListening() {
-  stopListening();
-  unsubProjects = _fsMod.onSnapshot(userCollection('projects'), (snap) => {
+// Watches one Firestore collection and mirrors remote changes into the
+// local store via `put`/`del`, firing onRemoteChangeCb once per snapshot
+// that actually changed something. Returns the unsubscribe function.
+function subscribeCollection(kind, { put, del }) {
+  return _fsMod.onSnapshot(userCollection(kind), (snap) => {
     let changed = false;
     snap.docChanges().forEach((change) => {
       changed = true;
       if (change.type === 'removed') {
-        localStore.deleteProject(change.doc.id);
+        del(change.doc.id);
       } else {
-        localStore.putProject(change.doc.data());
+        put(change.doc.data());
       }
     });
     if (changed && onRemoteChangeCb) onRemoteChangeCb();
   });
-  unsubEntries = _fsMod.onSnapshot(userCollection('entries'), (snap) => {
-    let changed = false;
-    snap.docChanges().forEach((change) => {
-      changed = true;
-      if (change.type === 'removed') {
-        localStore.deleteEntry(change.doc.id);
-      } else {
-        localStore.putEntry(change.doc.data());
-      }
-    });
-    if (changed && onRemoteChangeCb) onRemoteChangeCb();
+}
+
+function startListening() {
+  stopListening();
+  unsubProjects = subscribeCollection('projects', {
+    put: (p) => localStore.putProject(p),
+    del: (id) => localStore.deleteProject(id),
+  });
+  unsubEntries = subscribeCollection('entries', {
+    put: (e) => localStore.putEntry(e),
+    del: (id) => localStore.deleteEntry(id),
   });
 }
 
@@ -154,22 +156,28 @@ export async function disconnectSync() {
   _fsMod = null;
 }
 
-export async function pushProject(project) {
+async function pushDoc(kind, item) {
   if (!currentUser || !fbDb) return;
-  try { await _fsMod.setDoc(userDoc('projects', project.id), project, { merge: true }); } catch (err) { console.warn('sync push failed', err); }
+  try { await _fsMod.setDoc(userDoc(kind, item.id), item, { merge: true }); } catch (err) { console.warn('sync push failed', err); }
 }
 
-export async function pushDeleteProject(id) {
+async function pushDeleteDoc(kind, id) {
   if (!currentUser || !fbDb) return;
-  try { await _fsMod.deleteDoc(userDoc('projects', id)); } catch (err) { console.warn('sync delete failed', err); }
+  try { await _fsMod.deleteDoc(userDoc(kind, id)); } catch (err) { console.warn('sync delete failed', err); }
 }
 
-export async function pushEntry(entry) {
-  if (!currentUser || !fbDb) return;
-  try { await _fsMod.setDoc(userDoc('entries', entry.id), entry, { merge: true }); } catch (err) { console.warn('sync push failed', err); }
+export function pushProject(project) {
+  return pushDoc('projects', project);
 }
 
-export async function pushDeleteEntry(id) {
-  if (!currentUser || !fbDb) return;
-  try { await _fsMod.deleteDoc(userDoc('entries', id)); } catch (err) { console.warn('sync delete failed', err); }
+export function pushDeleteProject(id) {
+  return pushDeleteDoc('projects', id);
+}
+
+export function pushEntry(entry) {
+  return pushDoc('entries', entry);
+}
+
+export function pushDeleteEntry(id) {
+  return pushDeleteDoc('entries', id);
 }

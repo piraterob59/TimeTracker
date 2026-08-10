@@ -8,6 +8,7 @@ const PROJECT_COLORS = [
 
 const state = {
   projects: [],
+  projectsById: new Map(), // kept in sync with `projects` on every reload(), for O(1) lookups
   entries: [],
   running: null, // entry object with end === null
   view: 'timer',
@@ -19,18 +20,18 @@ const modalEl = el('#modal');
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
-function fmtHMS(totalSeconds) {
+function hmParts(totalSeconds) {
   const s = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+  return { h: Math.floor(s / 3600), m: Math.floor((s % 3600) / 60), s: s % 60 };
+}
+
+function fmtHMS(totalSeconds) {
+  const { h, m, s } = hmParts(totalSeconds);
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 function fmtHM(totalSeconds) {
-  const s = Math.max(0, Math.floor(totalSeconds));
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
+  const { h, m } = hmParts(totalSeconds);
   return `${h}h ${m}m`;
 }
 
@@ -67,7 +68,7 @@ function entryDuration(entry) {
 }
 
 function projectById(id) {
-  return state.projects.find((p) => p.id === id);
+  return state.projectsById.get(id);
 }
 
 function weekStart(date) {
@@ -82,6 +83,7 @@ function weekStart(date) {
 
 async function reload() {
   state.projects = await store.getAllProjects();
+  state.projectsById = new Map(state.projects.map((p) => [p.id, p]));
   state.entries = await store.getAllEntries();
   state.running = state.entries.find((e) => e.end === null) || null;
   renderAll();
@@ -108,9 +110,8 @@ function renderTimer() {
     const nameEl = el('#running-project-name');
     nameEl.textContent = p ? p.name : 'Unknown project';
     nameEl.style.color = p ? p.color : 'var(--text-dim)';
-    const noteEl = el('#running-note');
-    noteEl.value = state.running.note || '';
-    autoResizeNote(noteEl);
+    runningNoteEl.value = state.running.note || '';
+    autoResizeNote(runningNoteEl);
     el('#running-time').textContent = fmtHMS(entryDuration(state.running));
     el('#running-badge').classList.toggle('hidden', !state.running.paused);
     el('#pause-btn').textContent = state.running.paused ? 'Resume' : 'Pause';
@@ -167,6 +168,12 @@ function attachSwipeToDelete(wrap, row, entry) {
     row.style.transform = `translateX(${x}px)`;
   }
 
+  function resetSwipe() {
+    setTransform(0);
+    wrap.classList.remove('swipe-open');
+    if (openSwipeRow === wrap) openSwipeRow = null;
+  }
+
   row.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (openSwipeRow && openSwipeRow !== wrap) {
@@ -207,9 +214,7 @@ function attachSwipeToDelete(wrap, row, entry) {
         wrap.classList.add('swipe-open');
         openSwipeRow = wrap;
       } else {
-        setTransform(0);
-        wrap.classList.remove('swipe-open');
-        if (openSwipeRow === wrap) openSwipeRow = null;
+        resetSwipe();
       }
     }
   }
@@ -223,9 +228,7 @@ function attachSwipeToDelete(wrap, row, entry) {
       return;
     }
     if (wrap.classList.contains('swipe-open')) {
-      setTransform(0);
-      wrap.classList.remove('swipe-open');
-      if (openSwipeRow === wrap) openSwipeRow = null;
+      resetSwipe();
       return;
     }
     openEntryModal(entry);
@@ -235,14 +238,11 @@ function attachSwipeToDelete(wrap, row, entry) {
     e.stopPropagation();
     const ok = await openConfirm('Delete this entry?');
     if (!ok) {
-      setTransform(0);
-      wrap.classList.remove('swipe-open');
-      if (openSwipeRow === wrap) openSwipeRow = null;
+      resetSwipe();
       return;
     }
     if (openSwipeRow === wrap) openSwipeRow = null;
-    await store.deleteEntry(entry.id);
-    pushDeleteEntry(entry.id);
+    await removeEntry(entry.id);
     await reload();
   });
 }
@@ -251,7 +251,7 @@ let tickHandle = null;
 function ensureTicking() {
   if (tickHandle) return;
   tickHandle = setInterval(() => {
-    if (state.running) {
+    if (state.running && !document.hidden) {
       el('#running-time').textContent = fmtHMS(entryDuration(state.running));
     }
   }, 1000);
@@ -455,6 +455,36 @@ function escapeHtml(str) {
 
 // ---------- actions ----------
 
+// Persist + sync an entry/project — the shared tail of every mutation below.
+// Callers still `await reload()` themselves afterward (some also need to
+// closeModal() first), so that step isn't folded in here.
+async function saveEntry(entry) {
+  await store.putEntry(entry);
+  pushEntry(entry);
+}
+
+async function removeEntry(id) {
+  await store.deleteEntry(id);
+  pushDeleteEntry(id);
+}
+
+async function saveProject(project) {
+  await store.putProject(project);
+  pushProject(project);
+}
+
+// Closes out an in-progress pause as of `atMs`, folding the paused duration
+// into pauseMs — shared by togglePause (resuming) and stopTimer (stopping
+// while paused) so the two can't drift out of sync with each other.
+function closePause(entry, atMs) {
+  if (entry.paused && entry.pausedAt) {
+    const pausedAtMs = new Date(entry.pausedAt).getTime();
+    entry.pauseMs = (entry.pauseMs || 0) + Math.max(0, atMs - pausedAtMs);
+  }
+  entry.paused = false;
+  entry.pausedAt = null;
+}
+
 async function startTimer(projectId) {
   if (state.running) {
     await stopTimer();
@@ -470,8 +500,7 @@ async function startTimer(projectId) {
     pauseMs: 0,
     updatedAt: Date.now(),
   };
-  await store.putEntry(entry);
-  pushEntry(entry);
+  await saveEntry(entry);
   ensureTicking();
   await reload();
 }
@@ -481,18 +510,14 @@ async function togglePause() {
   const entry = { ...state.running };
   const now = Date.now();
   if (entry.paused) {
-    const pausedAtMs = new Date(entry.pausedAt).getTime();
-    entry.pauseMs = (entry.pauseMs || 0) + (now - pausedAtMs);
-    entry.paused = false;
-    entry.pausedAt = null;
+    closePause(entry, now);
   } else {
     entry.paused = true;
     entry.pausedAt = new Date(now).toISOString();
   }
-  entry.note = el('#running-note').value.trim();
+  entry.note = runningNoteEl.value.trim();
   entry.updatedAt = now;
-  await store.putEntry(entry);
-  pushEntry(entry);
+  await saveEntry(entry);
   await reload();
 }
 
@@ -500,26 +525,18 @@ async function stopTimer(endDate) {
   if (!state.running) return;
   const entry = { ...state.running };
   const end = endDate instanceof Date ? endDate : new Date();
-  const endMs = end.getTime();
-  if (entry.paused && entry.pausedAt) {
-    const pausedAtMs = new Date(entry.pausedAt).getTime();
-    entry.pauseMs = (entry.pauseMs || 0) + Math.max(0, endMs - pausedAtMs);
-  }
-  entry.paused = false;
-  entry.pausedAt = null;
-  entry.note = el('#running-note').value.trim();
+  closePause(entry, end.getTime());
+  entry.note = runningNoteEl.value.trim();
   entry.end = end.toISOString();
   entry.updatedAt = Date.now();
-  await store.putEntry(entry);
-  pushEntry(entry);
+  await saveEntry(entry);
   await reload();
 }
 
 async function setRunningStart(newStart) {
   if (!state.running) return;
   const entry = { ...state.running, start: newStart.toISOString(), updatedAt: Date.now() };
-  await store.putEntry(entry);
-  pushEntry(entry);
+  await saveEntry(entry);
   await reload();
 }
 
@@ -717,8 +734,7 @@ function openProjectModal(project) {
   if (isEdit) {
     el('#pf-archive').addEventListener('click', async () => {
       const updated = { ...p, archived: !p.archived, updatedAt: Date.now() };
-      await store.putProject(updated);
-      pushProject(updated);
+      await saveProject(updated);
       closeModal();
       await reload();
     });
@@ -734,16 +750,14 @@ function openProjectModal(project) {
       createdAt: p.id ? p.createdAt : Date.now(),
       updatedAt: Date.now(),
     };
-    await store.putProject(updated);
-    pushProject(updated);
+    await saveProject(updated);
     closeModal();
     await reload();
   });
 }
 
 function toDateInputValue(iso) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return fmtDateKey(iso);
 }
 function toTimeInputValue(iso) {
   const d = new Date(iso);
@@ -798,8 +812,7 @@ function openEntryModal(entry) {
     el('#ef-delete').addEventListener('click', async () => {
       const ok = await openConfirm('Delete this entry?');
       if (!ok) return;
-      await store.deleteEntry(e.id);
-      pushDeleteEntry(e.id);
+      await removeEntry(e.id);
       closeModal();
       await reload();
     });
@@ -830,8 +843,7 @@ function openEntryModal(entry) {
       pauseMs: e.pauseMs || 0,
       updatedAt: Date.now(),
     };
-    await store.putEntry(updated);
-    pushEntry(updated);
+    await saveEntry(updated);
     closeModal();
     await reload();
   });
@@ -844,46 +856,51 @@ function autoResizeNote(ta) {
   ta.style.height = `${ta.scrollHeight}px`;
 }
 
-function handleNoteKeydown(e) {
-  if (e.key !== 'Enter' || e.shiftKey) return;
-  const ta = e.target;
-  const value = ta.value;
-  const cursor = ta.selectionStart;
+// Pure decision logic for what Enter should do to a numbered-list textarea:
+// continue the current number, end the list on an empty item, auto-start a
+// list from a plain line, or (returning null) let a normal newline happen.
+// Kept free of DOM reads/writes so it can be reasoned about/tested on its
+// own, separately from the event-handling and textarea mutation below.
+function computeListContinuation(value, cursor) {
   const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
   const currentLine = value.slice(lineStart, cursor);
   const match = currentLine.match(/^(\d+)\.\s(.*)$/);
 
   if (match) {
-    // Already on a numbered line: continue it, or end the list if it's empty.
-    e.preventDefault();
     const num = parseInt(match[1], 10);
     const restOfLine = match[2];
     if (restOfLine.trim() === '') {
-      ta.value = value.slice(0, lineStart) + value.slice(cursor);
-      ta.selectionStart = ta.selectionEnd = lineStart;
-    } else {
-      const insertion = `\n${num + 1}. `;
-      ta.value = value.slice(0, cursor) + insertion + value.slice(cursor);
-      ta.selectionStart = ta.selectionEnd = cursor + insertion.length;
+      // Empty list item: remove its "N. " prefix and end the list.
+      return { value: value.slice(0, lineStart) + value.slice(cursor), cursor: lineStart };
     }
-    autoResizeNote(ta);
-    return;
+    const insertion = `\n${num + 1}. `;
+    return {
+      value: value.slice(0, cursor) + insertion + value.slice(cursor),
+      cursor: cursor + insertion.length,
+    };
   }
 
   // Not on a numbered line yet: pressing Enter after typing something starts
   // the list automatically — the line just typed becomes "1. ", and the new
   // line becomes "2. ", so you don't have to type "1. " yourself first.
   // Enter on a blank line just inserts a normal newline (no numbering).
-  if (currentLine.trim() !== '') {
-    e.preventDefault();
-    const before = value.slice(0, lineStart);
-    const after = value.slice(cursor);
-    const newValue = `${before}1. ${currentLine}\n2. ${after}`;
-    ta.value = newValue;
-    const newCursor = lineStart + `1. ${currentLine}\n2. `.length;
-    ta.selectionStart = ta.selectionEnd = newCursor;
-    autoResizeNote(ta);
-  }
+  if (currentLine.trim() === '') return null;
+  const insertion = `1. ${currentLine}\n2. `;
+  return {
+    value: value.slice(0, lineStart) + insertion + value.slice(cursor),
+    cursor: lineStart + insertion.length,
+  };
+}
+
+function handleNoteKeydown(e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  const ta = e.target;
+  const result = computeListContinuation(ta.value, ta.selectionStart);
+  if (!result) return;
+  e.preventDefault();
+  ta.value = result.value;
+  ta.selectionStart = ta.selectionEnd = result.cursor;
+  autoResizeNote(ta);
 }
 
 const runningNoteEl = el('#running-note');
