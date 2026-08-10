@@ -155,6 +155,7 @@ html, body {
 }
 
 .note-input {
+  display: block;
   width: 100%;
   padding: 10px 12px;
   border-radius: 10px;
@@ -162,6 +163,12 @@ html, body {
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
+  font-family: inherit;
+  line-height: 1.4;
+  resize: none;
+  overflow-y: auto;
+  min-height: 42px;
+  max-height: 200px;
 }
 
 .project-grid {

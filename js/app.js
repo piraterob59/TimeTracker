@@ -108,7 +108,9 @@ function renderTimer() {
     const nameEl = el('#running-project-name');
     nameEl.textContent = p ? p.name : 'Unknown project';
     nameEl.style.color = p ? p.color : 'var(--text-dim)';
-    el('#running-note').value = state.running.note || '';
+    const noteEl = el('#running-note');
+    noteEl.value = state.running.note || '';
+    autoResizeNote(noteEl);
     el('#running-time').textContent = fmtHMS(entryDuration(state.running));
     el('#running-badge').classList.toggle('hidden', !state.running.paused);
     el('#pause-btn').textContent = state.running.paused ? 'Resume' : 'Pause';
@@ -834,6 +836,43 @@ function openEntryModal(entry) {
     await reload();
   });
 }
+
+// ---------- note textarea ----------
+
+function autoResizeNote(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = `${ta.scrollHeight}px`;
+}
+
+function handleNoteKeydown(e) {
+  if (e.key !== 'Enter' || e.shiftKey) return;
+  const ta = e.target;
+  const value = ta.value;
+  const cursor = ta.selectionStart;
+  const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
+  const currentLine = value.slice(lineStart, cursor);
+  const match = currentLine.match(/^(\d+)\.\s(.*)$/);
+  if (!match) return; // not on a numbered-list line; let the default newline happen
+
+  e.preventDefault();
+  const num = parseInt(match[1], 10);
+  const restOfLine = match[2];
+
+  if (restOfLine.trim() === '') {
+    // Enter on an empty list item ends the list instead of continuing it.
+    ta.value = value.slice(0, lineStart) + value.slice(cursor);
+    ta.selectionStart = ta.selectionEnd = lineStart;
+  } else {
+    const insertion = `\n${num + 1}. `;
+    ta.value = value.slice(0, cursor) + insertion + value.slice(cursor);
+    ta.selectionStart = ta.selectionEnd = cursor + insertion.length;
+  }
+  autoResizeNote(ta);
+}
+
+const runningNoteEl = el('#running-note');
+runningNoteEl.addEventListener('keydown', handleNoteKeydown);
+runningNoteEl.addEventListener('input', () => autoResizeNote(runningNoteEl));
 
 // ---------- navigation ----------
 
