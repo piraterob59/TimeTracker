@@ -852,22 +852,34 @@ function handleNoteKeydown(e) {
   const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
   const currentLine = value.slice(lineStart, cursor);
   const match = currentLine.match(/^(\d+)\.\s(.*)$/);
-  if (!match) return; // not on a numbered-list line; let the default newline happen
 
-  e.preventDefault();
-  const num = parseInt(match[1], 10);
-  const restOfLine = match[2];
+  if (match) {
+    // Already on a numbered line: continue it, or end the list if it's empty.
+    e.preventDefault();
+    const num = parseInt(match[1], 10);
+    const restOfLine = match[2];
+    if (restOfLine.trim() === '') {
+      ta.value = value.slice(0, lineStart) + value.slice(cursor);
+      ta.selectionStart = ta.selectionEnd = lineStart;
+    } else {
+      const insertion = `\n${num + 1}. `;
+      ta.value = value.slice(0, cursor) + insertion + value.slice(cursor);
+      ta.selectionStart = ta.selectionEnd = cursor + insertion.length;
+    }
+    autoResizeNote(ta);
+    return;
+  }
 
-  if (restOfLine.trim() === '') {
-    // Enter on an empty list item ends the list instead of continuing it.
-    ta.value = value.slice(0, lineStart) + value.slice(cursor);
-    ta.selectionStart = ta.selectionEnd = lineStart;
-  } else {
-    const insertion = `\n${num + 1}. `;
+  // Not on a numbered line yet: pressing Enter after typing something starts
+  // the list automatically, so you don't have to type "1. " yourself first.
+  // Enter on a blank line just inserts a normal newline (no numbering).
+  if (currentLine.trim() !== '') {
+    e.preventDefault();
+    const insertion = '\n1. ';
     ta.value = value.slice(0, cursor) + insertion + value.slice(cursor);
     ta.selectionStart = ta.selectionEnd = cursor + insertion.length;
+    autoResizeNote(ta);
   }
-  autoResizeNote(ta);
 }
 
 const runningNoteEl = el('#running-note');
