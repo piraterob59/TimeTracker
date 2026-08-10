@@ -871,13 +871,17 @@ function handleNoteKeydown(e) {
   }
 
   // Not on a numbered line yet: pressing Enter after typing something starts
-  // the list automatically, so you don't have to type "1. " yourself first.
+  // the list automatically — the line just typed becomes "1. ", and the new
+  // line becomes "2. ", so you don't have to type "1. " yourself first.
   // Enter on a blank line just inserts a normal newline (no numbering).
   if (currentLine.trim() !== '') {
     e.preventDefault();
-    const insertion = '\n1. ';
-    ta.value = value.slice(0, cursor) + insertion + value.slice(cursor);
-    ta.selectionStart = ta.selectionEnd = cursor + insertion.length;
+    const before = value.slice(0, lineStart);
+    const after = value.slice(cursor);
+    const newValue = `${before}1. ${currentLine}\n2. ${after}`;
+    ta.value = newValue;
+    const newCursor = lineStart + `1. ${currentLine}\n2. `.length;
+    ta.selectionStart = ta.selectionEnd = newCursor;
     autoResizeNote(ta);
   }
 }
